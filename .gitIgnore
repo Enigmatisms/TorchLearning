@@ -1,0 +1,8 @@
+*.jpg
+*.png
+*.bmp
+*.avi
+*.db
+/.vscode/
+/build/
+/data/
