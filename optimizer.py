@@ -5,8 +5,8 @@
 
 import numpy as np
 import torch as t
-from torch.optim import Optimizer
 from torch.autograd import Variable as Var
+from torch.optim import Optimizer
 from torch import nn
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
