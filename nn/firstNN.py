@@ -5,7 +5,8 @@
 """
 import torch
 from torch import nn                                # nn模块，必须使用到的
-from torch.autograd import Variable as Var          # 需要将训练使用的数据 / label都变成Variable才能放入网络中
+from torch.autograd import Variable as Var
+from torch.nn.modules.activation import Softmax          # 需要将训练使用的数据 / label都变成Variable才能放入网络中
 from torchvision import datasets                    # 跑数据集需要
 from torch.utils.data.dataloader import DataLoader  # 数据集加载工具
 from torch import optim                             # 优化器，传入网络参数进行优化
@@ -24,6 +25,8 @@ from torchvision import transforms                  # 进来的数据集为PILIm
         直到最后：Flatten -> FC -> Activation -> FC -> Output.
 
         注意其中有些线性连接层
+        修改了网络架构之后，出现了非常奇怪的准确率损失现象
+        没有看在训练集上的表现，暂时怀疑是出现了过拟合
 """
 # 简单的CNN网络架构
 class CNN(nn.Module):
@@ -31,7 +34,7 @@ class CNN(nn.Module):
         super().__init__()
         # 第一层
         self.conv1 = nn.Sequential(     
-            nn.Conv2d(1, 16, 5, padding = 2),       # 注意，pytorch默认没有padding，所以卷积需要padding
+            nn.Conv2d(1, 16, 3, padding = 1),       # 注意，pytorch默认没有padding，所以卷积需要padding
             nn.ReLU(),                              # ReLU
             nn.MaxPool2d(2)                         # 注意MaxPool （pooling操作）是采样，相当于resize（有损失的）
         )
@@ -43,14 +46,24 @@ class CNN(nn.Module):
         )
         self.conv3 = nn.Sequential(     # 第三层
             nn.Conv2d(32, 16, 5, padding = 2),
-            nn.ReLU(),
+            nn.BatchNorm2d(16),
+            nn.LeakyReLU(),
         )
         self.out = nn.Sequential(       # 输出全连接 + 正则化 + 激活 + 全连接
-            nn.Linear(16 * 7 * 7, 20),
-            nn.BatchNorm1d(20),
-            nn.Softmax(),
-            nn.Linear(20, 10)
+            nn.Linear(16 * 7 * 7, 128),
+            # nn.Dropout(),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Linear(128, 10),
+            # 原来的实现：在ReLU之后
+            # nn.Linear(128, 32),
+            # nn.softmax(),
+            # nn.Linear(32, 10)
+            # 注意CrossEntrophyLoss和Softmax之间的关系，以及logit函数
         )
+        """
+            顺便说一下 之所以要用log_softmax而不是直接先算softmax再算log 是因为这样有可能导致精度问题
+        """
         # 如果是简单分类判别的话
 
     def forward(self, x):               # 前向传递
@@ -70,7 +83,7 @@ class CNN(nn.Module):
 if __name__ == "__main__":
     use_load = False
     batch_size = 50
-    epoches = 3
+    epoches = 1
     lrate = 1e-3
     inspect_point = 50
 
@@ -81,14 +94,15 @@ if __name__ == "__main__":
 
     # 使用mini batch会更好，test_data也可以batch操作
     test_data = DataLoader(tests, batch_size = batch_size, shuffle = False)     # 不打乱，便于观察输出
+    train_set = datasets.MNIST("..\\data\\", True, transform = tf, download = False)
+    tdata = DataLoader(train_set, batch_size = batch_size, shuffle = True)      # 测试集，需要打乱
 
     if use_load == False:
         cnn = CNN()
         cnn.cuda()                                          # 直接使用GPU训练
         opt = optim.Adam(cnn.parameters(), lr = lrate)      # 优化器设定
         loss_func = nn.CrossEntropyLoss()                   # 误差函数设定
-        train_set = datasets.MNIST("..\\data\\", True, transform = tf, download = False)
-        tdata = DataLoader(train_set, batch_size = batch_size, shuffle = True)      # 测试集，需要打乱
+        
 
         batch_cnt = 1
         for i in range(epoches):                            # 可以对训练集进行多次训练
