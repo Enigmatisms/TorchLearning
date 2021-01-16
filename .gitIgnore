@@ -1,6 +1,7 @@
 *.jpg
 *.png
 *.bmp
+*.pdf
 *.avi
 *.db
 /.vscode/
@@ -10,3 +11,4 @@
 /__pycache__/
 /models/
 */*.pkl
+/problems/
