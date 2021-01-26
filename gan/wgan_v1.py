@@ -1,14 +1,15 @@
 #-*-coding:utf-8-*-
 """
-    生成对抗网络实践
-    第一版本完全死亡，生成出来的就不是数字，就是噪声，很漂亮的雪花噪声
-        GAN v1：雪花噪声生成网络
+    使用WGAN的损失函数，由于WGAN_GP（梯度惩罚 WGAN）会存在梯度爆炸的问题，只简单尝试WGAN
 """
 
+import time
 import torch
 from torch import nn
 from torch import optim
 from torch.autograd import Variable as Var
+from torch.nn.modules import loss
+from torch.nn.modules.dropout import Dropout
 from torch.utils.data.dataloader import DataLoader
 from torchvision import datasets
 from torchvision import transforms
@@ -34,13 +35,13 @@ class Generator(nn.Module):
         # 输出：7 * 7 * 8
         self.conv1 = nn.Sequential(
             nn.Conv2d(16, 8, 3, stride = 1, padding = 1),
-            nn.InstanceNorm2d(8),
+            nn.LayerNorm([7, 7]),
             nn.LeakyReLU(0.1, True)
         )
         # 输出 14 * 14 * 4
         self.conv2 = nn.Sequential(
             nn.Conv2d(8, 4, 3, stride = 1, padding = 1),
-            nn.InstanceNorm2d(4),
+            nn.LayerNorm([14, 14]),
             nn.LeakyReLU(0.1, True)
         )
         # 输出 28 * 28 * 2
@@ -52,10 +53,6 @@ class Generator(nn.Module):
         # 输出 56 * 56 * 1
         self.conv4 = nn.Sequential(
             nn.Conv2d(2, 1, 3, stride = 1, padding = 1),
-            nn.BatchNorm2d(1),
-        )
-        self.conv5 = nn.Sequential(
-            nn.Conv2d(2, 1, 5, stride = 1, padding = 2),
             nn.BatchNorm2d(1),
         )
         self.sampler = nn.Upsample(scale_factor = 2)
@@ -70,7 +67,7 @@ class Generator(nn.Module):
         x = self.sampler(x)
         x = self.conv3(x)
         x = self.sampler(x)
-        x = self.conv4(x) + self.conv5(x)
+        x = self.conv4(x)
         return self.Tanh(x)
 
 class Discriminator(nn.Module):
@@ -78,39 +75,41 @@ class Discriminator(nn.Module):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(1, 2, 3, stride = 1, padding = 1),
-            nn.LeakyReLU(0.1, True)
-        )
-        # 输入 28 * 28 * 4
-        self.lin1 = nn.Sequential(
-            nn.Linear(28 * 28 * 8, 28 * 28),
-            nn.BatchNorm1d(28 * 28),
             nn.LeakyReLU(0.1, True),
-            nn.Dropout(0.25)
+            nn.Dropout2d(0.1)
+        )
+        # 输入 28 * 28 * 2
+        self.lin1 = nn.Sequential(
+            nn.Linear(28 * 28 * 8, 28 * 28 * 2),
+            nn.BatchNorm1d(28 * 28 * 2),
+            nn.LeakyReLU(0.1, True),
+            nn.Dropout2d(0.1)
         )
         self.lin2 = nn.Sequential(
-            nn.Linear(28 * 28, 49),
+            nn.Linear(28 * 28 * 2, 49),
             nn.BatchNorm1d(49),
             nn.LeakyReLU(0.1, True),
-            nn.Dropout(0.25)
+            nn.Dropout(0.1),
+            nn.Linear(49, 1)
         )
-        self.lin3 = nn.Sequential(
-            nn.Linear(49, 1),
-            nn.Sigmoid()
-        )
-    
+
     def forward(self, x):
         x = self.conv(x)
         x = x.view(x.size(0), -1)
         x = self.lin1(x)
-        x = self.lin2(x)
-        return self.lin3(x)
+        return self.lin2(x)
 
+# 相比于普通GAN， WGAN只需要修改的是loss的计算以及优化器的优化策略（RMSProp）
 if __name__ == "__main__":
     if torch.cuda.is_available() == False:
         raise RuntimeError("Cuda is not available.")
-    batch_size = 100
-    train_epoch = 30
+    batch_size = 50
+    train_epoch = 60
     input_size = 196
+    sample_time = 600
+    # ============ WGAN 相关优化参数 =================
+    n_critic = 3            # 每四次判别器优化后进行一次生成器优化
+    crop = 0.02
     data_set = DataLoader(
         datasets.MNIST(
             "..\\data\\",
@@ -126,53 +125,66 @@ if __name__ == "__main__":
     batch_number = data_set.__len__()
     G = Generator(input_size).cuda()
     D = Discriminator().cuda()
-    gopt = optim.Adam(G.parameters(), lr = 4e-3)
-    dopt = optim.Adam(D.parameters(), lr = 5e-4)
-    lossFunc = nn.BCELoss()
+    gopt = optim.RMSprop(G.parameters(), lr = 5e-4)
+    dopt = optim.RMSprop(D.parameters(), lr = 5e-4)
     real_labels = Var(torch.ones((batch_size, 1))).cuda()
     fake_labels = Var(torch.zeros((batch_size, 1))).cuda()
-
+    train_cnt = 0
+    last_time = 0
+    this_time = 0
+    time_init = False
     for epoch in range(train_epoch):
         for k, (bx, _) in enumerate(data_set):
             dopt.zero_grad()
-            bx = bx.cuda()
+            bx = Var(bx).cuda()
             # =============== 判别器训练 =================
             real_out = D(bx)
-            d_loss_real = lossFunc(real_out, real_labels)
 
             fake_in = Var(torch.randn(batch_size, input_size)).cuda()
             fake_imgs = G(fake_in)
             fake_out = D(fake_imgs)
-            d_loss_fake = lossFunc(fake_out, fake_labels)
-            d_loss = d_loss_fake + d_loss_real
+            d_loss = - torch.mean(real_out) + torch.mean(fake_out)
             d_loss.backward()
             dopt.step()
-            # =============== 判别器acc计算 ==============
-            pred_real = torch.round(real_out)
-            acc_cnt = (pred_real == real_labels).sum()
 
-            pred_fake = torch.round(fake_out)
-            acc_cnt += (pred_fake == fake_labels).sum()
+            for p in D.parameters():        # 截断处理
+                p.data.clamp_(- crop, crop)
             # ================ 生成器 ===================
-            gopt.zero_grad()
-            fake_in = Var(torch.randn(batch_size, input_size)).cuda()
-            fake_imgs = G(fake_in)
-            fake_out = D(fake_imgs)
-            g_loss = lossFunc(fake_out, real_labels)
-            g_loss.backward()
-            gopt.step()
-            print("Epoch %d/%d, batch %d/%d, [D loss: %f, acc: %f], [G loss: %f]"%(
-                    epoch, train_epoch, k, batch_number,
-                    d_loss.data.item(),
-                    acc_cnt / (2 * batch_size),
-                    g_loss.data.item()
+            if train_cnt % n_critic == 0:
+                gopt.zero_grad()
+                fake_in = Var(torch.randn(batch_size, input_size)).cuda()
+                fake_imgs = G(fake_in)
+                fake_out = D(fake_imgs)
+                g_loss = - torch.mean(fake_out)
+                g_loss.backward()
+                gopt.step()
+                print("Epoch %d/%d, batch %d/%d, [D loss: %f], [G loss: %f]"%(
+                        epoch, train_epoch, k, batch_number,
+                        d_loss.data.item(),
+                        g_loss.data.item()
+                    )
                 )
-            )
-            if k % 200 == 0:
-                save_image(fake_imgs.data[:25], "images/%d.png" %(k + batch_number * epoch), nrow = 5, normalize = True)
+            if k % sample_time == 0:
+                save_image(fake_imgs.data[:25], "images/%d.png" %(k + batch_number * epoch),
+                     nrow = 5, normalize = True)
+                if time_init == False:
+                    time_init = True
+                    last_time = time.time()
+                else:
+                    this_time = time.time()
+                    interval = this_time - last_time
+                    last_time = this_time
+                    eta = (
+                        batch_number / sample_time * (train_epoch - epoch) +    # 剩余epoch时间
+                        (batch_number - k) / sample_time                        # 本epoch剩余时间
+                    ) * interval
+                    print("Time for %d batches: %f, ETA: %f s"%(
+                        sample_time, interval,  eta
+                    ))
+            train_cnt += 1
     print("training completed.")
-    torch.save(D, "..\\models\\GAN_D_v2.pkl", )
-    torch.save(G, "..\\models\\GAN_G_v2.pkl", )
+    torch.save(D, "..\\models\\WGAN_D_v3.pkl", )
+    torch.save(G, "..\\models\\WGAN_G_v3.pkl", )
 
 
 
