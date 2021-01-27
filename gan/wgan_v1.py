@@ -75,8 +75,7 @@ class Discriminator(nn.Module):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(1, 2, 3, stride = 1, padding = 1),
-            nn.LeakyReLU(0.1, True),
-            nn.Dropout2d(0.1)
+            nn.LeakyReLU(0.1, True)
         )
         # 输入 28 * 28 * 2
         self.lin1 = nn.Sequential(
@@ -104,7 +103,7 @@ if __name__ == "__main__":
     if torch.cuda.is_available() == False:
         raise RuntimeError("Cuda is not available.")
     batch_size = 50
-    train_epoch = 60
+    train_epoch = 100
     input_size = 196
     sample_time = 600
     # ============ WGAN 相关优化参数 =================
@@ -125,8 +124,8 @@ if __name__ == "__main__":
     batch_number = data_set.__len__()
     G = Generator(input_size).cuda()
     D = Discriminator().cuda()
-    gopt = optim.RMSprop(G.parameters(), lr = 5e-4)
-    dopt = optim.RMSprop(D.parameters(), lr = 5e-4)
+    gopt = optim.RMSprop(G.parameters(), lr = 6e-4)
+    dopt = optim.RMSprop(D.parameters(), lr = 6e-4)
     real_labels = Var(torch.ones((batch_size, 1))).cuda()
     fake_labels = Var(torch.zeros((batch_size, 1))).cuda()
     train_cnt = 0
@@ -165,7 +164,7 @@ if __name__ == "__main__":
                     )
                 )
             if k % sample_time == 0:
-                save_image(fake_imgs.data[:25], "images/%d.png" %(k + batch_number * epoch),
+                save_image(fake_imgs.data[:25], "images/%d.jpg" %(k + batch_number * epoch),
                      nrow = 5, normalize = True)
                 if time_init == False:
                     time_init = True
