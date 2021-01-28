@@ -1,3 +1,4 @@
+# 自动训练 上传github 关机shell
 py ./wgan_v1.py >> train_process.txt
 
 echo "Training completed."

@@ -22,6 +22,9 @@
   - gan_v2训练结果不算太好（最后会消失，因为分类器实在太强了，二分类任务最后干爆了生成器）
   - 干爆的结果就是：只有生成出全黑的图片才能让分类器的loss尽可能小
   - 需要改变此局面
+- 2020.1.28
+  - 将WGAN网络结构改为了全连接隐藏层 + 大kernel卷积输出，效果比原来好多了
+  - Notes：[【GAN原理】](https://github.com/Enigmatisms/TorchLearning/blob/master/notes/GAN.md)
 #### TODOs
 - [ ] 更多优化算法使用Torch的自动求导实现（个人感觉这样用就相当于一个python版的Ceres）
 - [ ] optim库用的不熟

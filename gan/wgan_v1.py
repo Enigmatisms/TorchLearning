@@ -1,8 +1,10 @@
 #-*-coding:utf-8-*-
 """
     使用WGAN的损失函数，由于WGAN_GP（梯度惩罚 WGAN）会存在梯度爆炸的问题，只简单尝试WGAN
+    1. 使用卷积网络的方式 效果比较差，而且训练也慢，现尝试一下只用多层感知机
 """
 
+from pickle import FALSE
 import time
 import torch
 from torch import nn
@@ -25,67 +27,43 @@ class Generator(nn.Module):
             block = [nn.Linear(in_dim, out_dim)]
             if norm == True:
                 block.append(nn.BatchNorm1d(out_dim))
-            block.append(nn.LeakyReLU(0.1, inplace))
+            block.append(nn.LeakyReLU(0.2, inplace))
             return block
         # 输出 392 * 2 = 7 * 7 * 16
         self.linUpSamp = nn.Sequential(
-            *linBlock(in_feat, 2 * in_feat, False),
+            *linBlock(in_feat, 2 * in_feat),
             *linBlock(2 * in_feat, 4 * in_feat),
+            *linBlock(4 * in_feat, 8 * in_feat),
+            *linBlock(8 * in_feat, 32 * in_feat)
         )
-        # 输出：7 * 7 * 8
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(16, 8, 3, stride = 1, padding = 1),
-            nn.LayerNorm([7, 7]),
-            nn.LeakyReLU(0.1, True)
+        self.conv = nn.Sequential(
+           nn.Conv2d(2, 1, 5, stride = 1, padding = 2),     # 相当于 * 2操作（全连接->卷积）
+           nn.Tanh()
         )
-        # 输出 14 * 14 * 4
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(8, 4, 3, stride = 1, padding = 1),
-            nn.LayerNorm([14, 14]),
-            nn.LeakyReLU(0.1, True)
-        )
-        # 输出 28 * 28 * 2
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(4, 2, 3, stride = 1, padding = 1),
-            nn.InstanceNorm2d(2),
-            nn.LeakyReLU(0.1, True)
-        )
-        # 输出 56 * 56 * 1
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(2, 1, 3, stride = 1, padding = 1),
-            nn.BatchNorm2d(1),
-        )
-        self.sampler = nn.Upsample(scale_factor = 2)
-        self.Tanh = nn.Tanh()
 
     def forward(self, x):
+        # 7 * 7 * 4的输入，过一层卷积
         x = self.linUpSamp(x)
-        x = x.view(x.size(0), 16, 7, 7)
-        x = self.conv1(x)
-        x = self.sampler(x)
-        x = self.conv2(x)
-        x = self.sampler(x)
-        x = self.conv3(x)
-        x = self.sampler(x)
-        x = self.conv4(x)
-        return self.Tanh(x)
+        # 输出 56 * 56 * 2 reshape成 56 * 56 * channel_2
+        x = x.view(x.size(0), 2, 56, 56)
+        return self.conv(x)
 
 class Discriminator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(1, 2, 3, stride = 1, padding = 1),
-            nn.LeakyReLU(0.1, True)
-        )
-        # 输入 28 * 28 * 2
+        # 输入 56 * 56
         self.lin1 = nn.Sequential(
-            nn.Linear(28 * 28 * 8, 28 * 28 * 2),
+            nn.Linear(56 * 56, 28 * 28 * 2),
             nn.BatchNorm1d(28 * 28 * 2),
             nn.LeakyReLU(0.1, True),
             nn.Dropout2d(0.1)
         )
         self.lin2 = nn.Sequential(
-            nn.Linear(28 * 28 * 2, 49),
+            nn.Linear(28 * 28 * 2, 14 * 14),
+            nn.BatchNorm1d(14 * 14),
+            nn.LeakyReLU(0.1, True),
+            nn.Dropout(0.1),
+            nn.Linear(14 * 14, 49),
             nn.BatchNorm1d(49),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.1),
@@ -93,7 +71,6 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, x):
-        x = self.conv(x)
         x = x.view(x.size(0), -1)
         x = self.lin1(x)
         return self.lin2(x)
@@ -102,6 +79,7 @@ class Discriminator(nn.Module):
 if __name__ == "__main__":
     if torch.cuda.is_available() == False:
         raise RuntimeError("Cuda is not available.")
+    load = True
     batch_size = 50
     train_epoch = 100
     input_size = 196
@@ -112,7 +90,7 @@ if __name__ == "__main__":
     data_set = DataLoader(
         datasets.MNIST(
             "..\\data\\",
-            train = True,
+            train = (not load),
             download = False,
             transform = transforms.Compose(
                     [transforms.Resize((56, 56)), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
@@ -122,8 +100,12 @@ if __name__ == "__main__":
         shuffle = True,
     )
     batch_number = data_set.__len__()
-    G = Generator(input_size).cuda()
-    D = Discriminator().cuda()
+    if load == False:
+        G = Generator(input_size).cuda()
+        D = Discriminator().cuda()
+    else:
+        G = torch.load("..\\models\\WGAN_G_v2.pkl");
+        D = torch.load("..\\models\\WGAN_D_v2.pkl");
     gopt = optim.RMSprop(G.parameters(), lr = 6e-4)
     dopt = optim.RMSprop(D.parameters(), lr = 6e-4)
     real_labels = Var(torch.ones((batch_size, 1))).cuda()
