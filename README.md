@@ -26,5 +26,4 @@
   - 将WGAN网络结构改为了全连接隐藏层 + 大kernel卷积输出，效果比原来好多了
   - Notes：[【GAN原理】](https://github.com/Enigmatisms/TorchLearning/blob/master/notes/GAN.md)
 #### TODOs
-- [ ] 更多优化算法使用Torch的自动求导实现（个人感觉这样用就相当于一个python版的Ceres）
-- [ ] optim库用的不熟
+- [ ] 风格迁移网络构建
