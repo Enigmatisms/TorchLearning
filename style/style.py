@@ -12,7 +12,6 @@
         - 循环一致误差
     CycleGAN -v1 致命的缺陷：训练极其慢 （1s才能处理完一张图像）
 """
-from numpy.core.shape_base import hstack
 import torch
 from torch import nn
 from torch import optim
@@ -22,6 +21,7 @@ from torchvision.utils import save_image
 from torch.utils.data.dataloader import DataLoader
 from torchvision import datasets
 import matplotlib.pyplot as plt
+from sys import argv
 
 tf = transforms.ToTensor()
 
@@ -75,7 +75,8 @@ class Discriminator(nn.Module):
         # (256, 256, 3) -> (128, 128, 8)
         self.conv1 = nn.Sequential(
             nn.Conv2d(3, 8, 4, stride = 2, padding = 1),
-            nn.InstanceNorm2d(8),
+            # nn.InstanceNorm2d(8),
+            nn.LeakyReLU(0.2, True)
         )
 
         # (128, 128, 8) -> (64, 64, 16)
@@ -178,10 +179,12 @@ if __name__ == "__main__":
     g_lr = 1e-3
     d_lr = 1e-3
     cyc_cf = 10
-    epoches = 2
     sign_epoch = 60     # significant epoch
-    n_crit = 3          # train Generator every n_crit
+    n_crit = 2          # train Generator every n_crit
     n_save_time = 20    # save imgs every n_save_time
+    epoches = 2
+    if len(argv) > 1:
+        epoches = int(argv[1])
 
     loadx = getLoader(tf)
     loady = getLoader(tf, "trainB\\")
