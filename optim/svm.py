@@ -1,17 +1,18 @@
+#-*-coding:utf-8-*-
 """
     SVM numpy 实现
     基于论文SMO: *Sequential Minimal Optimization: A Fast Algorithm for Training Support Vector Machines*
 """
 
 import numpy as np
-from random import randint, sample
+from random import randint
 import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d as mp3
 
 # 方便可视化，这个SVM是 二分类SVM，维数可变
 class SVM:
     # `feat_dim` 特征空间的维度
-    def __init__(self, feat_dim = 3, C = 0.01, eps = 1e-5, max_iter = 1000):
+    def __init__(self, feat_dim = 3, C = 0.002, eps = 1e-5, max_iter = 1000):
         self.fdim = feat_dim
         self.w = np.zeros((feat_dim, 1), dtype = float)
         self.b = 0.0
@@ -122,6 +123,13 @@ class SVM:
             xx, yy = np.meshgrid(np.linspace(-3, 3), np.linspace(-3, 3))
             zz = - self.w[0] / self.w[2] * xx - self.w[1] / self.w[2] * yy - self.b
             ax.plot_surface(xx, yy, zz, color = 'g', alpha = 0.2)
+    
+    def plotOnlySuperPlain(self, ax, c, label, alpha = 0.2):
+        xx, yy = np.meshgrid(np.linspace(-3, 3), np.linspace(-3, 3))
+        zz = - self.w[0] / self.w[2] * xx - self.w[1] / self.w[2] * yy - self.b
+        surf = ax.plot_surface(xx, yy, zz, color = c, alpha = alpha, label = label)
+        surf._facecolors2d = surf._facecolors3d
+        surf._edgecolors2d = surf._edgecolors3d
 
     def calcL(self, alph1, alph2, equal = False):
         if equal == True:

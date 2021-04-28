@@ -114,8 +114,12 @@ if __name__ == "__main__":
     last_time = 0
     this_time = 0
     time_init = False
+    img_cnt = 1
     for epoch in range(train_epoch):
         for k, (bx, _) in enumerate(data_set):
+            for img in bx:
+                save_image(img, "./mnist/%d.jpg"%(img_cnt), nrow = 1)
+                img_cnt += 1
             dopt.zero_grad()
             bx = Var(bx).cuda()
             # =============== 判别器训练 =================

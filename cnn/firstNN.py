@@ -85,7 +85,7 @@ if __name__ == "__main__":
     batch_size = 50
     epoches = 1
     lrate = 1e-3
-    inspect_point = 50
+    inspect_point = 200
 
     tf = transforms.ToTensor()
 

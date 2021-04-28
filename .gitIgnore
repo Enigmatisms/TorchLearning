@@ -6,6 +6,7 @@
 *.db
 */*.jpg
 */*.png
+/logs/
 /.vscode/
 /build/
 /data/
